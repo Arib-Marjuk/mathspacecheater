@@ -190,7 +190,7 @@ while True:
             for prev_answer in browser.all(previous_answers_text):
                 prev_answers += parse_html(prev_answer.element("./*")) + "\n"
 
-        if browser.element(input_textbox).matching(be.present):
+        if browser.element(input_textbox).with_(timeout=1).matching(be.present):
             print(f"{question}\n{expression}\n{prev_answers}")
             answer = solve(f"{question}\n{expression}\n{prev_answers}")
 
