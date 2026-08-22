@@ -22,7 +22,7 @@ question_text = '.css-2xu9yf'
 expression_text = '.css-1oh6uy8'
 previous_answers_text = '.css-14mgtrt'
 multi_answer_check = '.css-5514lj'
-last_question_check = '.css-14rm8s7'
+last_question_check = '.css-14peahi'
 close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo its genuinely annoying
 
 container_classes = [
@@ -190,7 +190,7 @@ while True:
             for prev_answer in browser.all(previous_answers_text):
                 prev_answers += parse_html(prev_answer.element("./*")) + "\n"
 
-        if browser.element(input_textbox).with_(timeout=1).matching(be.present):
+        if browser.element(input_textbox).with_(timeout=2).matching(be.present):
             print(f"{question}\n{expression}\n{prev_answers}")
             answer = solve(f"{question}\n{expression}\n{prev_answers}")
 
@@ -207,7 +207,7 @@ while True:
         # checks if there are follow up questions and clicks the next button if there isnt
         if not browser.element(multi_answer_check).wait_until(be.present):
             browser.element(next_button).with_(timeout=16).click()
-        elif not browser.element(multi_answer_check).element("./..").element(last_question_check):
+        elif not browser.element(last_question_check).wait_until(be.present):
             browser.element(next_button).with_(timeout=16).click()
 
         if browser.element(keepPracticing_button).with_(timeout=2).wait_until(be.clickable):
