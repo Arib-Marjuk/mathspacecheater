@@ -14,13 +14,14 @@ from bs4.element import PageElement, NavigableString, Tag
 
 ## magic values ----------------------
 input_textbox = '.css-14n74r0'
-mcq_option_button = 'css-1lvovyg'
+mcq_option_button = '.css-aaf0c9'
 submit_button = '.css-k008qs'
 next_button = '.css-3tczsx'
 keepPracticing_button = '.css-1vcvnis'
 question_text = '.css-2xu9yf'
 expression_text = '.css-1oh6uy8'
 previous_answers_text = '.css-14mgtrt'
+loaded_check = '.css-5hicrt'
 multi_answer_check = '.css-5514lj'
 last_question_check = '.css-14peahi'
 close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo its genuinely annoying
@@ -52,7 +53,8 @@ def solve(text: str) -> str | None:
                 +  "\nIt should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh)."
                 + f"\nProvide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4)."
                 + f"\nTo type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}"
-                +  "\nRepeated questions means you got the last one incorrect"
+                +  "\nIf you are provided a list of options, respond with only the index number."
+                +  "\nMultiple answers are seperated with a comma."
                 ,
                 generation_config={
                     "thinking_level": "high"
@@ -175,8 +177,10 @@ actions = ActionChains(browser.driver)
 while True:
     try:
         # tries to close milo
-        if browser.element(close_milo_button).with_(timeout=2).matching(be.present):
+        if browser.element(close_milo_button).with_(timeout=1).matching(be.present):
             browser.element(close_milo_button).click()
+
+        browser.element(loaded_check).should(be.present)
 
         # extracts the questions and parses their html for ai
         question = parse_html(browser.element(question_text))
@@ -190,9 +194,11 @@ while True:
             for prev_answer in browser.all(previous_answers_text):
                 prev_answers += parse_html(prev_answer.element("./*")) + "\n"
 
-        if browser.element(input_textbox).with_(timeout=2).matching(be.present):
-            print(f"{question}\n{expression}\n{prev_answers}")
-            answer = solve(f"{question}\n{expression}\n{prev_answers}")
+        full_question = f"{question}\n{prev_answers}\n{expression}"
+
+        if browser.element(input_textbox).with_(timeout=1).matching(be.present):
+            print(full_question)
+            answer = solve(full_question)
 
             actions.send_keys(Keys.BACKSPACE) # clears the text field
             actions.perform()
@@ -201,14 +207,32 @@ while True:
 
             actions.send_keys(answer or "")
             actions.perform()
+        elif browser.element(mcq_option_button).matching(be.present):
+            ##print(browser.element(mcq_option_button).element(".."))
+            option_list: list[Element] = []
 
-            browser.element(submit_button).click()
+            for index, button in enumerate(browser.all(mcq_option_button)):
+                full_question += "\n"
+                option_list.append(button)
+                full_question += str(index) + " " + parse_html(button)
+
+            print(full_question)
+            answers = solve(full_question) or ""
+
+            for answer in answers.split(","):
+                answer = int(answer.strip())
+                print(answer)
+                option_list[answer].element("..").click()
+
+        browser.element(submit_button).click()
 
         # checks if there are follow up questions and clicks the next button if there isnt
         if not browser.element(multi_answer_check).wait_until(be.present):
             browser.element(next_button).with_(timeout=16).click()
         elif not browser.element(last_question_check).wait_until(be.present):
             browser.element(next_button).with_(timeout=16).click()
+        else:
+            browser.element(submit_button).should(be.clickable)
 
         if browser.element(keepPracticing_button).with_(timeout=2).wait_until(be.clickable):
             browser.element(keepPracticing_button).click()
