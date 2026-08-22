@@ -224,7 +224,7 @@ while True:
                 print(answer)
                 option_list[answer].element("..").click()
 
-        browser.element(submit_button).click()
+        browser.element(submit_button).with_(timeout=2).click()
 
         # checks if there are follow up questions and clicks the next button if there isnt
         if not browser.element(multi_answer_check).wait_until(be.present):
@@ -243,10 +243,7 @@ while True:
         pass
 
         
-# TODO(sometime in the future): implement features related the following ids
-# table answer class id: 
-# mcq option element classes: css-1lvovyg
-#   radio: css-aaf0c9
-#   checkbox: css-aaf0c9
-
-# mq-editable-field
+# TODO(sometime in the future): implement features related the following
+# normal tables and fill in the blank tables
+# fill in the blanks
+# pictures
