@@ -1,5 +1,7 @@
 # NOTE: this code is kinda buns
 
+import time
+
 from google import genai
 
 from selenium import webdriver
@@ -15,6 +17,7 @@ from bs4.element import PageElement, NavigableString, Tag
 ## magic values ----------------------
 input_textbox = '.css-14n74r0'
 mcq_option_button = '.css-aaf0c9'
+figure_image = '.css-k3trc9'
 submit_button = '.css-k008qs'
 next_button = '.css-3tczsx'
 keepPracticing_button = '.css-1vcvnis'
@@ -26,46 +29,54 @@ multi_answer_check = '.css-5514lj'
 last_question_check = '.css-14peahi'
 close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo its genuinely annoying
 
-container_classes = [
+container_classes = {
     "xBQ2HyCNJoo33_Z_K6va",
     "prefix", 
     "mq-math-mode", 
     "mq-root-block",
     "mq-non-leaf"
-]
+}
 ## -----------------------------------
 
-#prevInteractionId = None
+client = genai.Client()
 
-def solve(text: str) -> str | None:
+def solve(text: str, imageurl: str | None = None) -> str | None:
     try:
-        with genai.Client() as client:
-            #global prevInteractionId
+        kwargs = {}
+        kwargs["input"] = [{"type": "text", "text": text}]
 
-            #kwargs = {}
-            #if prevInteractionId is not None and browser.element('css-5514lj').wait_until(be.present):
-            #    kwargs["previous_interaction_id"] = prevInteractionId
+        if imageurl is not None:
+            image = client.files.upload(file=imageurl)
 
-            response = client.interactions.create(
-                model="gemini-3.5-flash-lite",
-                system_instruction=
-                   "\nProvide strictly the answer and no formating, as characters typable on a keyboard (including ^)."
-                +  "\nIt should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh)."
-                + f"\nProvide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4)."
-                + f"\nTo type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}"
-                +  "\nIf you are provided a list of options, respond with only the index number."
-                +  "\nMultiple answers are seperated with a comma."
-                ,
-                generation_config={
-                    "thinking_level": "high"
-                },
-                input=text,
-                #**kwargs
-            )
+            if image.uri and image.mime_type:
+                kwargs["input"].append(
+                    {
+                        "type": "image", 
+                        "uri": image.uri,
+                        "mime_type": image.mime_type
+                    }
+                )
 
-            #prevInteractionId = response.id 
+        response = client.interactions.create(
+            model="gemini-3.5-flash-lite",
+            system_instruction=
+                "\nProvide strictly the answer and no formating, as characters typable on a keyboard (including ^)."
+            +  "\nIt should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh)."
+            + f"\nProvide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4)."
+            + f"\nTo type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT})."
+            +  "\nIf you are provided a list of options, respond with only the index number."
+            +  "\nMultiple answers are seperated with a comma."
+            ,
+            generation_config={
+                "thinking_level": "high"
+            },
+            **kwargs
+        ) 
 
-            return response.output_text # type: ignore
+        if image.name:
+            client.files.delete(name=image.name)
+
+        return response.output_text # type: ignore
 
     except Exception as e:
         print(f"error: {e}")
@@ -78,6 +89,8 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
         return str(soup_node)
 
     classes = soup_node.get("class") or []
+
+    print(soup_node.name)
 
     if classes == ["mq-selectable"]:
         return ""
@@ -124,19 +137,22 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
 
         return f"√({sqrt})"
 
-    if classes == [] or any(cls in classes for cls in container_classes):
-            fragment = ""
-            for child in soup_node.children:
-                fragment += parse_mq(child)
-    
-            return fragment.replace("−", "-").replace("÷​", "/").replace("+​", "+").replace("×", "*").replace("\u200b", "")
+    if soup_node.name == "img":
+        print("image")
+        return str(soup_node.get("src")) or ''
 
     if soup_node.has_attr('mathquill-command-id'):
         return soup_node.text 
 
-    return ""
+    # if none apply
+    fragment = ""
+    for child in soup_node.children:
+        fragment += parse_mq(child)
+
+    return fragment.replace("−", "-").replace("÷​", "/").replace("+​", "+").replace("×", "*").replace("\u200b", "")
     
 def parse_html(element: Element):
+    print(element)
     html = element.get(query.attribute("innerHTML"))
 
     #print(html)
@@ -186,6 +202,7 @@ while True:
         question = parse_html(browser.element(question_text))
         expression = ""
         prev_answers = ""
+        imageurl = None
 
         if browser.element(expression_text).matching(be.present):
             expression = parse_html(browser.all(expression_text).element(-1)) 
@@ -196,9 +213,13 @@ while True:
 
         full_question = f"{question}\n{prev_answers}\n{expression}"
 
+        if browser.element(figure_image):
+            imageurl = parse_html(browser.element(figure_image))
+            print("the image url is: " + imageurl)
+
         if browser.element(input_textbox).with_(timeout=1).matching(be.present):
             print(full_question)
-            answer = solve(full_question)
+            answer = solve(full_question, imageurl)
 
             actions.send_keys(Keys.BACKSPACE) # clears the text field
             actions.perform()
@@ -207,6 +228,7 @@ while True:
 
             actions.send_keys(answer or "")
             actions.perform()
+            
         elif browser.element(mcq_option_button).matching(be.present):
             ##print(browser.element(mcq_option_button).element(".."))
             option_list: list[Element] = []
@@ -232,12 +254,14 @@ while True:
         elif not browser.element(last_question_check).wait_until(be.present):
             browser.element(next_button).with_(timeout=16).click()
         else:
-            browser.element(submit_button).should(be.clickable)
+            time.sleep(4)
 
         if browser.element(keepPracticing_button).with_(timeout=2).wait_until(be.clickable):
             browser.element(keepPracticing_button).click()
 
     except Exception as e:
+        # ive made it intensionally skip errors 
+        # since most of the time it will continue to work anyway 
         print(type(e).__name__)
         print(e)
         pass
