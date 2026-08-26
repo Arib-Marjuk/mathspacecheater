@@ -31,29 +31,41 @@ last_question_check = '.css-14peahi'
 close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo its genuinely annoying
 ## -----------------------------------
 
-#prevInteractionId = None
-
 client = genai.Client()
 
-def solve(text: str) -> str | None:
+def solve(text: str, imageurl: str | None = None) -> str | None:
     try:
         kwargs = {}
         kwargs["input"] = [{"type": "text", "text": text}]
 
+        if imageurl is not None:
+            image = client.files.upload(file=imageurl)
+
+            if image.uri and image.mime_type:
+                kwargs["input"].append(
+                    {
+                        "type": "image", 
+                        "uri": image.uri,
+                        "mime_type": image.mime_type
+                    }
+                )
+
         response = client.interactions.create(
             model="gemini-3.5-flash-lite",
-            system_instruction=f'''
+            system_instruction=f"""
             Provide strictly the answer and no formating, as characters typable on a keyboard (including ^).
             It should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh).
             Provide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4).
-            To type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}
-            Always provide any ratio with : inbetween (e.g. 2/3 -> 2:3, 2/4/3 -> 2:4:3)
+            To type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}).
             If you are provided a list of options, respond with only the index number.
             Multiple answers are seperated with a comma.
-            ''',
+            """,
             generation_config={"thinking_level": "high"},
             **kwargs
-        )
+        ) 
+
+        if image.name:
+            client.files.delete(name=image.name)
 
         return response.output_text # type: ignore
 
@@ -68,6 +80,8 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
         return str(soup_node)
 
     classes = soup_node.get("class") or []
+
+    print(soup_node.name)
 
     if classes == ["mq-selectable"]:
         return ""
@@ -125,6 +139,7 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
     return fragment.replace("−", "-").replace("÷​", "/").replace("+​", "+").replace("×", "*").replace("\u200b", "")
     
 def parse_html(element: Element):
+    print(element)
     html = element.get(query.attribute("innerHTML"))
 
     #print(html)
@@ -204,9 +219,13 @@ while True:
             figure_caption = parse_html(browser.element(figure_image))
             full_question += f"\n{figure_caption}"
 
+        if browser.element(figure_image):
+            imageurl = parse_html(browser.element(figure_image))
+            print("the image url is: " + imageurl)
+
         if browser.element(input_textbox).with_(timeout=1).matching(be.present):
             print(full_question)
-            answer = solve(full_question)
+            answer = solve(full_question, imageurl)
 
             actions.scroll_to_element(browser.element(input_textbox).locate())
             actions.send_keys(Keys.BACKSPACE) # clears the text field
