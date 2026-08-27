@@ -20,6 +20,7 @@ mcq_option_button = '.css-aaf0c9'
 figure_image = '.css-k3trc9'
 submit_button = '.css-k008qs'
 next_button = '.css-3tczsx'
+continue_button = '.css-1gomreu'
 keepPracticing_button = '.css-1vcvnis'
 question_text = '.css-2xu9yf'
 expression_text = '.css-1oh6uy8'
@@ -28,14 +29,6 @@ loaded_check = '.css-5hicrt'
 multi_answer_check = '.css-5514lj'
 last_question_check = '.css-14peahi'
 close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo its genuinely annoying
-
-container_classes = {
-    "xBQ2HyCNJoo33_Z_K6va",
-    "prefix", 
-    "mq-math-mode", 
-    "mq-root-block",
-    "mq-non-leaf"
-}
 ## -----------------------------------
 
 #prevInteractionId = None
@@ -49,17 +42,16 @@ def solve(text: str) -> str | None:
 
         response = client.interactions.create(
             model="gemini-3.5-flash-lite",
-            system_instruction=
-                "\nProvide strictly the answer and no formating, as characters typable on a keyboard (including ^)."
-            +  "\nIt should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh)."
-            + f"\nProvide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4)."
-            + f"\nTo type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}"
-            +  "\nIf you are provided a list of options, respond with only the index number."
-            +  "\nMultiple answers are seperated with a comma."
-            ,
-            generation_config={
-                "thinking_level": "high"
-            },
+            system_instruction=f'''
+            Provide strictly the answer and no formating, as characters typable on a keyboard (including ^).
+            It should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh).
+            Provide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4).
+            To type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}
+            Always provide any ratio with : inbetween (e.g. 2/3 -> 2:3, 2/4/3 -> 2:4:3)
+            If you are provided a list of options, respond with only the index number.
+            Multiple answers are seperated with a comma.
+            ''',
+            generation_config={"thinking_level": "high"},
             **kwargs
         )
 
@@ -186,21 +178,27 @@ while True:
 
         # extracts the questions and parses their html for ai
         question = parse_html(browser.element(question_text))
-        expression = ""
-        prev_answers = ""
+        expressions = []
         figure = ""
 
         full_question = question
 
         if browser.element(expression_text).matching(be.present):
-            expression = parse_html(browser.all(expression_text).element(-1))
-            full_question += f"\n{expression}"
+            for expression in browser.all(expression_text):
+                expressions.append(parse_html(expression))
 
         if browser.element(previous_answers_text).matching(be.present):
-            for prev_answer in browser.all(previous_answers_text):
-                prev_answers += parse_html(prev_answer.element("./*")) + "\n"
+            for index, prev_answer_element in enumerate(browser.all(previous_answers_text)):
+                prev_answer = (parse_html(prev_answer_element.element("./*")) + "\n")
 
-            full_question += f"\n{prev_answers}"
+                expressions_pairs = expressions[:-1]
+
+                if browser.element(expression_text).matching(be.present):
+                    if index < len(expressions_pairs):
+                        full_question += f"\n{expressions_pairs[index]}\n{prev_answer}"
+
+        if browser.element(expression_text).matching(be.present):
+            full_question += f"\n{expressions[-1]}"
 
         if browser.element(figure_image).matching(be.present):
             figure_caption = parse_html(browser.element(figure_image))
@@ -210,6 +208,7 @@ while True:
             print(full_question)
             answer = solve(full_question)
 
+            actions.scroll_to_element(browser.element(input_textbox).locate())
             actions.send_keys(Keys.BACKSPACE) # clears the text field
             actions.perform()
 
@@ -230,7 +229,7 @@ while True:
             answers = solve(full_question) or ""
 
             for answer in answers.split(","):
-                answer = int(answer.strip())
+                answer = int(answer.strip().replace(Keys.RIGHT, ""))
                 print(answer)
                 option_list[answer].element("..").click()
 
@@ -246,6 +245,8 @@ while True:
 
         if browser.element(keepPracticing_button).with_(timeout=2).wait_until(be.clickable):
             browser.element(keepPracticing_button).click()
+        elif browser.element(continue_button).matching(be.clickable):
+            browser.element(continue_button).click()
 
     except Exception as e:
         # ive made it intensionally skip errors 
@@ -258,4 +259,4 @@ while True:
 # TODO(sometime in the future): implement features related the following
 # normal tables and fill in the blank tables
 # fill in the blanks
-# pictures
+# pictures - done i think
