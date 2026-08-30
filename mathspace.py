@@ -39,7 +39,7 @@ def solve(text: str, imageurl: str | None = None) -> str | None:
         kwargs["input"] = [{"type": "text", "text": text}]
 
         if imageurl is not None:
-            image = client.files.upload(file=imageurl)
+            image = client.files.upload(file="https://mathspace.co"+imageurl)
 
             if image.uri and image.mime_type:
                 kwargs["input"].append(
@@ -81,13 +81,8 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
 
     classes = soup_node.get("class") or []
 
-    print(soup_node.name)
-
     if classes == ["mq-selectable"]:
         return ""
-
-    if classes == ["math-inline"]:
-        return soup_node.text
 
     if "mq-paren" in classes:
         return soup_node.text 
@@ -127,6 +122,14 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
             sqrt += parse_mq(child)
 
         return f"√({sqrt})"
+
+    if soup_node.name == "figure":
+        for child in soup_node.children:
+            if child.name == "figcaption":
+                return parse_mq(child)
+
+    if soup_node.name == "img":
+        return str(soup_node.get("src")) 
 
     if soup_node.has_attr('mathquill-command-id'):
         return soup_node.text 
@@ -215,13 +218,11 @@ while True:
         if browser.element(expression_text).matching(be.present):
             full_question += f"\n{expressions[-1]}"
 
-        if browser.element(figure_image).matching(be.present):
-            figure_caption = parse_html(browser.element(figure_image))
-            full_question += f"\n{figure_caption}"
-
         if browser.element(figure_image):
             imageurl = parse_html(browser.element(figure_image))
-            print("the image url is: " + imageurl)
+            if not imageurl.find("https://"):
+                full_question += f"\n{imageurl}"
+                imageurl = None
 
         if browser.element(input_textbox).with_(timeout=1).matching(be.present):
             print(full_question)
@@ -245,7 +246,7 @@ while True:
                 full_question += str(index) + " " + parse_html(button)
 
             print(full_question)
-            answers = solve(full_question) or ""
+            answers = solve(full_question, imageurl) or ""
 
             for answer in answers.split(","):
                 answer = int(answer.strip().replace(Keys.RIGHT, ""))
