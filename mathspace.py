@@ -1,6 +1,6 @@
 # NOTE: this code is kinda buns
 
-import time
+from time import sleep
 
 from google import genai
 
@@ -13,6 +13,19 @@ from selenium.webdriver.common.keys import Keys
 
 from bs4 import BeautifulSoup
 from bs4.element import PageElement, NavigableString, Tag
+
+## ai settings -----------------------
+ai_model = "gemini-3.5-flash-lite"
+ai_instructions = f"""
+    Provide strictly the answer and no formating, as characters typable on a keyboard (including ^).
+    It should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh).
+    Provide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4).
+    To type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}).
+    If you are provided a list of options, respond with only the index number.
+    Multiple answers are seperated with a comma.
+"""
+ai_config = {"thinking_level": "high"}
+## -----------------------------------
 
 ## magic values ----------------------
 input_textbox = '.css-14n74r0'
@@ -33,39 +46,27 @@ close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo i
 
 client = genai.Client()
 
-def solve(text: str, imageurl: str | None = None) -> str | None:
+def solve(text: str, imageb64: str | None = None) -> str | None:
     try:
         kwargs = {}
+        kwargs["model"] = ai_model
+        kwargs["system_instruction"] = ai_instructions
+        kwargs["generation_config"] = ai_config
+        
         kwargs["input"] = [{"type": "text", "text": text}]
 
-        if imageurl is not None:
-            image = client.files.upload(file="https://mathspace.co"+imageurl)
-
-            if image.uri and image.mime_type:
+        image = None
+        if imageb64 is not None:
+            if image is not None:
                 kwargs["input"].append(
                     {
                         "type": "image", 
-                        "uri": image.uri,
-                        "mime_type": image.mime_type
+                        "data": imageb64,
+                        "mime_type": "image/png"
                     }
                 )
 
-        response = client.interactions.create(
-            model="gemini-3.5-flash-lite",
-            system_instruction=f"""
-            Provide strictly the answer and no formating, as characters typable on a keyboard (including ^).
-            It should be an answer that a grade 8 student would give with BODMAS in its simplest form (unless the question says otherwise) (e.g. l*w*h as lwh).
-            Provide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4).
-            To type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}).
-            If you are provided a list of options, respond with only the index number.
-            Multiple answers are seperated with a comma.
-            """,
-            generation_config={"thinking_level": "high"},
-            **kwargs
-        ) 
-
-        if image.name:
-            client.files.delete(name=image.name)
+        response = client.interactions.create(**kwargs) 
 
         return response.output_text # type: ignore
 
@@ -125,11 +126,11 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
 
     if soup_node.name == "figure":
         for child in soup_node.children:
-            if child.name == "figcaption":
+            if isinstance(child, Tag) and child.name == "figcaption":
                 return parse_mq(child)
 
     if soup_node.name == "img":
-        return str(soup_node.get("src")) 
+        return "https://mathspace.co" + str(soup_node.get("src"))
 
     if soup_node.has_attr('mathquill-command-id'):
         return soup_node.text 
@@ -171,6 +172,8 @@ def parse_html(element: Element):
 ## to let selenium see anything, you will need a chrome window with remote debugging
 ## "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\selene_profile"
 
+skip_err = input("skip errors? (Y/N): ").strip().lower()
+
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 
@@ -197,7 +200,7 @@ while True:
         # extracts the questions and parses their html for ai
         question = parse_html(browser.element(question_text))
         expressions = []
-        figure = ""
+        imageb64 = None
 
         full_question = question
 
@@ -218,15 +221,17 @@ while True:
         if browser.element(expression_text).matching(be.present):
             full_question += f"\n{expressions[-1]}"
 
-        if browser.element(figure_image):
-            imageurl = parse_html(browser.element(figure_image))
-            if not imageurl.find("https://"):
-                full_question += f"\n{imageurl}"
-                imageurl = None
+        if browser.element(figure_image).matching(be.present):
+            imageb64 = parse_html(browser.element(figure_image))
+            if imageb64.find("https://") != -1:
+                imageb64 = browser.element(figure_image).locate().screenshot_as_base64
+            else:
+                full_question += f"\n{imageb64}"
+                imageb64 = None
 
         if browser.element(input_textbox).with_(timeout=1).matching(be.present):
             print(full_question)
-            answer = solve(full_question, imageurl)
+            answer = solve(full_question, imageb64)
 
             actions.scroll_to_element(browser.element(input_textbox).locate())
             actions.send_keys(Keys.BACKSPACE) # clears the text field
@@ -246,7 +251,7 @@ while True:
                 full_question += str(index) + " " + parse_html(button)
 
             print(full_question)
-            answers = solve(full_question, imageurl) or ""
+            answers = solve(full_question, imageb64) or ""
 
             for answer in answers.split(","):
                 answer = int(answer.strip().replace(Keys.RIGHT, ""))
@@ -261,7 +266,7 @@ while True:
         elif not browser.element(last_question_check).wait_until(be.present):
             browser.element(next_button).with_(timeout=16).click()
         else:
-            time.sleep(4)
+            sleep(4)
 
         if browser.element(keepPracticing_button).with_(timeout=2).wait_until(be.clickable):
             browser.element(keepPracticing_button).click()
@@ -269,14 +274,15 @@ while True:
             browser.element(continue_button).click()
 
     except Exception as e:
-        # ive made it intensionally skip errors 
-        # since most of the time it will continue to work anyway 
-        print(type(e).__name__)
-        print(e)
-        pass
+        # choosing to skip errors is an option
+        # since most of the time the script continues to work anyway 
+        if skip_err == "y":
+            print(type(e).__name__)
+            print(e)
+        else:
+            raise
 
         
 # TODO(sometime in the future): implement features related the following
 # normal tables and fill in the blank tables
 # fill in the blanks
-# pictures - done i think
