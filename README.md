@@ -8,7 +8,7 @@ it only works on chrome for now but maybe ill add other webdrivers too
 - textbox answers
 - mcq answers
 - question figures
-- picture answers (sometimes)
+- picture answers (only those with proper captions, doesnt work for more than one question)
 
 ### what doesnt work:
 - questions with an attached table
