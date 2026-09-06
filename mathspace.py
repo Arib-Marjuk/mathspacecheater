@@ -9,6 +9,7 @@ from selene import browser, query, be
 from selene.core.entity import Element
 
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.common.keys import Keys 
 
 from bs4 import BeautifulSoup
@@ -135,6 +136,9 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
     if soup_node.name == "img":
         return "src='" + str(soup_node.get("src")) + "'"
 
+    if soup_node.name == "table":
+        return "aria-label='" + str(soup_node.get("aria-label")) + "'"
+
     if soup_node.has_attr('mathquill-command-id'):
         return soup_node.text 
 
@@ -168,7 +172,16 @@ def parse_html(element: Element):
     if img_src_index != -1:
         close_index = text.find("'", img_src_index + len("src='")) + 1
         img_element = browser.element(f"img[{text[img_src_index:close_index]}]").locate()
-        actions.scroll_to_element(img_element)
+        actions.scroll_from_origin(ScrollOrigin.from_element(img_element), 0, 50)
+        actions.perform()
+        imageb64 = "$B64 " + img_element.screenshot_as_base64
+        return f"{text[:img_src_index]}\n{imageb64}\n{text[close_index:]}"
+
+    img_src_index = text.find("aria-label='") 
+    if img_src_index != -1:
+        close_index = text.find("'", img_src_index + len("aria-label='")) + 1
+        img_element = browser.element(f"table[{text[img_src_index:close_index]}]").locate()
+        actions.scroll_from_origin(ScrollOrigin.from_element(img_element), 0, 50)
         actions.perform()
         imageb64 = "$B64 " + img_element.screenshot_as_base64
         return f"{text[:img_src_index]}\n{imageb64}\n{text[close_index:]}"
