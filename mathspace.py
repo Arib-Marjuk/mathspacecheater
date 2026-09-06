@@ -22,6 +22,7 @@ ai_instructions = f"""
     Provide {Keys.RIGHT} in the answer after an exponent or fraction to indicate where it stops if it is applicable (e.g. 2^2{Keys.RIGHT}+4, 1/6{Keys.RIGHT}*4).
     To type a mixed fraction, simply type 'mixed' and provide {Keys.RIGHT} at the end of each number (e.g. 1 and 2/3 -> mixed1{Keys.RIGHT}2{Keys.RIGHT}3{Keys.RIGHT}).
     If you are provided a list of options, respond with only the index number.
+    The option number immediately before an image identifies that image. Return only the number corresponding to the image that correctly answers the question.
     Multiple answers are seperated with a comma.
 """
 ai_config = {"thinking_level": "high"}
@@ -46,25 +47,27 @@ close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo i
 
 client = genai.Client()
 
-def solve(text: str, imageb64: str | None = None) -> str | None:
+def solve(input: str) -> str | None:
     try:
         kwargs = {}
         kwargs["model"] = ai_model
         kwargs["system_instruction"] = ai_instructions
         kwargs["generation_config"] = ai_config
-        
-        kwargs["input"] = [{"type": "text", "text": text}]
 
-        image = None
-        if imageb64 is not None:
-            if image is not None:
-                kwargs["input"].append(
-                    {
-                        "type": "image", 
-                        "data": imageb64,
-                        "mime_type": "image/png"
-                    }
-                )
+        kwargs["input"] = []
+
+        raw_input = input.split("\n")
+        for input_object in raw_input:
+            if input_object == '': continue
+
+            if input_object.startswith("$B64 "):
+                input_object = input_object.removeprefix("$B64 ")
+                kwargs["input"].append({
+                    "type": "image", 
+                    "data": input_object,
+                    "mime_type": "image/png"})
+            else:
+                kwargs["input"].append({"type": "text", "text": input_object})
 
         response = client.interactions.create(**kwargs) 
 
@@ -130,7 +133,7 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
                 return parse_mq(child)
 
     if soup_node.name == "img":
-        return "https://mathspace.co" + str(soup_node.get("src"))
+        return "src='" + str(soup_node.get("src")) + "'"
 
     if soup_node.has_attr('mathquill-command-id'):
         return soup_node.text 
@@ -141,12 +144,9 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
         fragment += parse_mq(child)
 
     return fragment.replace("−", "-").replace("÷​", "/").replace("+​", "+").replace("×", "*").replace("\u200b", "")
-    
-def parse_html(element: Element):
-    print(element)
-    html = element.get(query.attribute("innerHTML"))
 
-    #print(html)
+def parse_html(element: Element):
+    html = element.get(query.attribute("innerHTML"))
 
     if html is None:
         return ""
@@ -163,6 +163,15 @@ def parse_html(element: Element):
                 
         elif isinstance(node, Tag):
             text += parse_mq(node)
+
+    img_src_index = text.find("src='") 
+    if img_src_index != -1:
+        close_index = text.find("'", img_src_index + len("src='")) + 1
+        img_element = browser.element(f"img[{text[img_src_index:close_index]}]").locate()
+        actions.scroll_to_element(img_element)
+        actions.perform()
+        imageb64 = "$B64 " + img_element.screenshot_as_base64
+        return f"{text[:img_src_index]}\n{imageb64}\n{text[close_index:]}"
 
     return text
 
@@ -200,7 +209,6 @@ while True:
         # extracts the questions and parses their html for ai
         question = parse_html(browser.element(question_text))
         expressions = []
-        imageb64 = None
 
         full_question = question
 
@@ -223,15 +231,17 @@ while True:
 
         if browser.element(figure_image).matching(be.present):
             imageb64 = parse_html(browser.element(figure_image))
-            if imageb64.find("https://") != -1:
-                imageb64 = browser.element(figure_image).locate().screenshot_as_base64
-            else:
+            if imageb64.find("$B64 ") != -1:
                 full_question += f"\n{imageb64}"
-                imageb64 = None
+
+        full_question = full_question.replace("\xa0", " ").strip()
 
         if browser.element(input_textbox).with_(timeout=1).matching(be.present):
-            print(full_question)
-            answer = solve(full_question, imageb64)
+            clean_question = "\n".join(
+                line for line in full_question.splitlines() if not line.startswith("$B64 ")
+            )
+            print(clean_question)
+            answer = solve(full_question)
 
             actions.scroll_to_element(browser.element(input_textbox).locate())
             actions.send_keys(Keys.BACKSPACE) # clears the text field
@@ -245,13 +255,18 @@ while True:
         elif browser.element(mcq_option_button).matching(be.present):
             option_list: list[Element] = []
 
+            full_question += "\n"
             for index, button in enumerate(browser.all(mcq_option_button)):
-                full_question += "\n"
+                if index > 0:
+                    full_question += ", "
                 option_list.append(button)
-                full_question += str(index) + " " + parse_html(button)
+                full_question += f"Option {str(index)}: {parse_html(button)}"
 
-            print(full_question)
-            answers = solve(full_question, imageb64) or ""
+            clean_question = "\n".join(
+                line for line in full_question.splitlines() if not line.startswith("$B64 ")
+            )
+            print(clean_question)
+            answers = solve(full_question) or ""
 
             for answer in answers.split(","):
                 answer = int(answer.strip().replace(Keys.RIGHT, ""))
