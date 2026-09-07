@@ -1,5 +1,6 @@
 # NOTE: this code is kinda buns
 
+import sys
 from time import sleep
 
 from google import genai
@@ -89,9 +90,6 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
     if classes == ["mq-selectable"]:
         return ""
 
-    if "mq-paren" in classes:
-        return soup_node.text 
-
     if "mq-fraction" in classes:
         num = ""
         deno = ""
@@ -138,9 +136,6 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
 
     if soup_node.name == "table":
         return "aria-label='" + str(soup_node.get("aria-label")) + "'"
-
-    if soup_node.has_attr('mathquill-command-id'):
-        return soup_node.text 
 
     # if none apply
     fragment = ""
@@ -194,7 +189,18 @@ def parse_html(element: Element):
 ## to let selenium see anything, you will need a chrome window with remote debugging
 ## "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\selene_profile"
 
-skip_err = input("skip errors? (Y/N): ").strip().lower()
+if len(sys.argv) > 1:
+    skip_err = sys.argv[1]
+    if skip_err == "True":
+        skip_err = True
+    else:
+        skip_err = False
+else:
+    skip_err = input("skip errors? (Y/N): ").strip().upper()
+    if skip_err == "Y":
+        skip_err = True
+    else:
+        skip_err = False
 
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
@@ -304,7 +310,7 @@ while True:
     except Exception as e:
         # choosing to skip errors is an option
         # since most of the time the script continues to work anyway 
-        if skip_err == "y":
+        if skip_err:
             print(type(e).__name__)
             print(e)
         else:
