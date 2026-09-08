@@ -124,7 +124,7 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
         for child in soup_node.children:
             sqrt += parse_mq(child)
 
-        return f"√({sqrt})"
+        return f"({sqrt})"
 
     if soup_node.name == "figure":
         for child in soup_node.children:
