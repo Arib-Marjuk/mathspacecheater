@@ -30,22 +30,24 @@ ai_instructions = f"""
 ai_config = {"thinking_level": "high"}
 ## -----------------------------------
 
-## magic values ----------------------
+## magic values -----------------------
 input_textbox = '.css-14n74r0'
 mcq_option_button = '.css-aaf0c9'
+fitb_text = '.css-b3pn3b'
+general_input_container = '.css-jy06mt'
 figure_image = '.css-k3trc9'
 submit_button = '.css-k008qs'
 next_button = '.css-3tczsx'
 continue_button = '.css-1gomreu'
-keepPracticing_button = '.css-1vcvnis'
+keep_practicing_button = '.css-1vcvnis'
 question_text = '.css-2xu9yf'
 expression_text = '.css-1oh6uy8'
 previous_answers_text = '.css-14mgtrt'
 loaded_check = '.css-5hicrt'
 multi_answer_check = '.css-5514lj'
 last_question_check = '.css-14peahi'
-close_milo_button = '.css-152rhn5'    # i wish there was a way to disable milo its genuinely annoying
-## -----------------------------------
+close_milo_button = '.css-152rhn5'     # i wish there was a way to disable milo its genuinely annoying
+## ------------------------------------
 
 client = genai.Client()
 
@@ -87,7 +89,7 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
 
     classes = soup_node.get("class") or []
 
-    if classes == ["mq-selectable"]:
+    if classes == ["mq-selectable"] or soup_node.name == "style":
         return ""
 
     if "mq-fraction" in classes:
@@ -125,6 +127,9 @@ def parse_mq(soup_node: Tag | NavigableString | PageElement) -> str:
             sqrt += parse_mq(child)
 
         return f"({sqrt})"
+
+    if "mq-inner-editable" in classes:
+        return "⬚"
 
     if soup_node.name == "figure":
         for child in soup_node.children:
@@ -216,8 +221,8 @@ while True:
         if browser.element(next_button).matching(be.present):
             browser.element(next_button).click()
 
-        if browser.element(keepPracticing_button).wait_until(be.clickable):
-            browser.element(keepPracticing_button).click()
+        if browser.element(keep_practicing_button).wait_until(be.clickable):
+            browser.element(keep_practicing_button).click()
 
         # tries to close milo
         if browser.element(close_milo_button).with_(timeout=1).matching(be.present):
@@ -292,6 +297,20 @@ while True:
                 print(answer)
                 option_list[answer].element("..").click()
 
+        elif browser.element(fitb_text).matching(be.present):
+            full_question += parse_html(browser.element(fitb_text))
+            print(full_question)
+            answers = solve(full_question) or ""
+
+            browser.element("body").click() # resets tab navigation
+
+            for answer in answers.split(","):
+                answer = answer.strip()
+                actions.send_keys(Keys.TAB)
+                actions.send_keys(answer)
+                actions.perform()
+
+
         browser.element(submit_button).with_(timeout=2).click()
 
         # checks if there are follow up questions and clicks the next button if there isnt
@@ -302,8 +321,8 @@ while True:
         else:
             sleep(4)
 
-        if browser.element(keepPracticing_button).with_(timeout=2).wait_until(be.clickable):
-            browser.element(keepPracticing_button).click()
+        if browser.element(keep_practicing_button).with_(timeout=2).wait_until(be.clickable):
+            browser.element(keep_practicing_button).click()
         elif browser.element(continue_button).matching(be.clickable):
             browser.element(continue_button).click()
 
@@ -318,5 +337,4 @@ while True:
 
         
 # TODO(sometime in the future): implement features related the following
-# normal tables and fill in the blank tables
-# fill in the blanks
+# fill in the blank tables
