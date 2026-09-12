@@ -49,8 +49,6 @@ last_question_check = '.css-14peahi'
 close_milo_button = '.css-152rhn5'     # i wish there was a way to disable milo its genuinely annoying
 ## ------------------------------------
 
-client = genai.Client()
-
 def solve(input: str) -> str | None:
     try:
         kwargs = {}
@@ -206,6 +204,14 @@ else:
         skip_err = True
     else:
         skip_err = False
+
+if len(sys.argv) > 2:
+    if sys.argv[2]: 
+        api_key = sys.argv[2]
+else:
+    api_key = None
+
+client = genai.Client(api_key=api_key)
 
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
