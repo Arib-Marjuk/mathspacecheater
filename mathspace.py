@@ -208,6 +208,8 @@ else:
 if len(sys.argv) > 2:
     if sys.argv[2]: 
         api_key = sys.argv[2]
+    else:
+        api_key = None
 else:
     api_key = None
 

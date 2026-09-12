@@ -44,7 +44,7 @@ def murder():
     if process and process.poll() is None:
         process.kill()
 
-def api_options_window():
+def settings_window():
     global get_from_env
     global api_key
 
@@ -74,16 +74,38 @@ def update_settings():
 
     json.dump(settings, open("settings.json", "w"), indent=4, sort_keys=True)
 
+def debug_window():
+    window = Toplevel(root)
+    window.title("Debug")
+
+    window.columnconfigure(0, weight=1)
+    window.rowconfigure(0, weight=1)
+
+    mainframe = ttk.Frame(window)
+    mainframe.grid(column=0, row=0, sticky=NSEW, padx=25, pady=25)
+
+    mainframe.columnconfigure(1, weight=1)
+    mainframe.columnconfigure(2, weight=1)
+    mainframe.rowconfigure(2, weight=3)
+    mainframe.rowconfigure(4, weight=1)
+
+    ttk.Label(mainframe, text="Input").grid(column=1, row=1, sticky=W)
+    ttk.Entry(mainframe, state="readonly").grid(column=1, row=2, sticky=NSEW)
+
+    ttk.Label(mainframe, text="Output").grid(column=1, row=3, sticky=W)
+    ttk.Entry(mainframe, state="readonly").grid(column=1, row=4, sticky=NSEW)
+
+    ttk.Label(mainframe, text="Errors").grid(column=2, row=1, sticky=W)
+    ttk.Entry(mainframe, state="readonly").grid(column=2, row=2, rowspan=3, sticky=NSEW)
+
 def closed():
     murder()
     update_settings()
     root.destroy()
 
+
 root = Tk()
 root.title("mathspacecheater")
-
-root.columnconfigure(0, weight=1)
-root.rowconfigure(0, weight=1)
 
 font.nametofont("TkHeadingFont").config(weight="bold", size=12)
 
@@ -100,7 +122,8 @@ root.option_add('*tearOff', FALSE)
 menubar = Menu(root)
 root["menu"] = menubar
 
-menubar.add_command(label="Settings", command=api_options_window)
+menubar.add_command(label="Settings", command=settings_window)
+menubar.add_command(label="Debug", command=debug_window)
 
 mainframe = ttk.Frame(root)
 mainframe.grid(column=0, row=0, sticky=NSEW, padx=25, pady=25)
