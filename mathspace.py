@@ -217,10 +217,7 @@ client = genai.Client(api_key=api_key)
 
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-
-driver = webdriver.Chrome(options=chrome_options)
-
-browser.config.driver = driver
+browser.config.driver_options = chrome_options
 
 actions = ActionChains(browser.driver)
 
@@ -343,6 +340,9 @@ while True:
         else:
             raise
 
-        
+    except KeyboardInterrupt:
+        browser.quit()
+        sys.exit(0)
+
 # TODO(sometime in the future): implement features related the following
 # fill in the blank tables
