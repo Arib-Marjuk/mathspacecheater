@@ -2,7 +2,7 @@ mathspace cheater
 ---
 a python script that uses the chrome selenium webdriver 
 to solve mathspace questions using google gemini.
-can work on other browsers other than chrome, 
+may or may not work on other browsers other than chrome, 
 but you have to open them with `--remote-debugging-port=9222`
 
 ### what currently works:
@@ -16,5 +16,3 @@ but you have to open them with `--remote-debugging-port=9222`
 
 ### what doesnt work:
 - fill in the blank tables
-
-Ensure that you have C:\selene_profile chrome profile for open chrome to work.
