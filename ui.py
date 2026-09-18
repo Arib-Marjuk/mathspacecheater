@@ -4,12 +4,16 @@ from tkinter import font
 
 import subprocess
 import threading
+
 import signal
 import sys
+import os
 
 import time
 
 import json
+
+chrome_path = R'"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\selene_profile"'
 
 default_settings = {
     "api_key": "",
@@ -19,6 +23,7 @@ default_settings = {
 
 pinned = False
 settings = {}
+debug_output = None
 
 process: subprocess.Popen | None = None
 
@@ -28,54 +33,60 @@ def run_main_async():
     start_script.config(state="disabled")
     stop_script.config(state="normal")
 
-    if process is None or process.poll() is not None:
-        if not get_from_env.get():
-            key = api_key.get()
-        else:
-            key = ""
+    if process and process.poll() is None: return
+    if get_from_env.get():
+        key = ""
+    else:
+        key = api_key.get()
+    
+    if getattr(sys, 'frozen', False):
+        file = ["mathspace.exe"]
+    else:
+        file = [sys.executable, "-u", "mathspace.py"]
 
-        def read_output(pipe):
-            while outputting:
-                for bytes_line in iter(pipe.readline, b''):
-                    bytes_line: bytes
-                    line = bytes_line.decode('utf-8', "replace")
+    def read_output(pipe):
+        while outputting:
+            for bytes_line in iter(pipe.readline, b''):
+                bytes_line: bytes
+                line = bytes_line.decode('utf-8', "ignore")
 
-                    if debug_output is None: return
-                    debug_output.config(state="normal")
-                    debug_output.insert("end -2 chars", line + "\n")
-                    debug_output.config(state="disabled")
+                if debug_output is None: return
+                debug_output.config(state="normal")
+                debug_output.insert("end -2 chars", line + "\n")
+                debug_output.config(state="disabled")
 
-                time.sleep(0)
+            time.sleep(0)
 
-        def worker():
-            global process
-            global outputting
+    def worker():
+        global process
+        global outputting
 
-            creation_flags = 0
-            if sys.platform == "win32":
-                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+        creation_flags = 0
+        if sys.platform == "win32":
+            creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
 
-            process = subprocess.Popen(["python", "-u", "mathspace.py", str(err_disabled.get()), key], 
-                                       creationflags=creation_flags, stdout=subprocess.PIPE)
+        process = subprocess.Popen(file + [str(err_disabled.get()), key], 
+                                creationflags=creation_flags, stdout=subprocess.PIPE)
 
-            outputting = True
-            threading.Thread(target=read_output, args=(process.stdout,), daemon=True).start()
-            process.wait()
-            outputting = False
+        outputting = True
+        threading.Thread(target=read_output, args=(process.stdout,), daemon=True).start()
+        process.wait()
+        outputting = False
 
-            toggle_err.config(state="normal")
-            start_script.config(state="normal")
-            stop_script.config(state="disabled")
+        toggle_err.config(state="normal")
+        start_script.config(state="normal")
+        stop_script.config(state="disabled")
 
-        threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=worker, daemon=True).start()
 
 def murder():
     global process
-    if process and process.poll() is None:
-        if sys.platform == "win32":
-            process.send_signal(signal.CTRL_BREAK_EVENT)
-        else:
-            process.send_signal(signal.SIGINT)
+
+    if process is None or process.poll() is not None: return
+    if sys.platform == "win32":
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+    else:
+        process.send_signal(signal.SIGINT)
 
 def settings_window():
     global get_from_env
@@ -111,6 +122,7 @@ def debug_window():
     global debug_output
 
     def clear():
+        if debug_output is None: return
         debug_output.config(state="normal")
         debug_output.delete(1.0, "end")
         debug_output.config(state="disabled")
@@ -180,7 +192,7 @@ mainframe.grid(column=0, row=0, sticky=NSEW, padx=25, pady=25)
 ttk.Label(mainframe, text="mathspacecheater", font="TkHeadingFont").grid(column=1, row=1, sticky=W, padx=(0, 10), pady=(0, 10))
 
 open_chrome = ttk.Button(mainframe, text="Open Google Chrome", 
-                         command=lambda: subprocess.run(["python", "openchrome.py"]))
+                         command=lambda: subprocess.Popen(chrome_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
 open_chrome.grid(column=1, row=2, sticky=W, ipadx=4)
 
 button_frames = ttk.Frame(mainframe)
