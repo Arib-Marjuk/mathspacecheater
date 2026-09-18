@@ -4,6 +4,10 @@ from tkinter import font
 
 import subprocess
 import threading
+import signal
+import sys
+
+import time
 
 import json
 
@@ -13,7 +17,9 @@ default_settings = {
     "get_from_env": False
 }
 
+pinned = False
 settings = {}
+
 process: subprocess.Popen | None = None
 
 def run_main_async():
@@ -28,10 +34,34 @@ def run_main_async():
         else:
             key = ""
 
+        def read_output(pipe):
+            while outputting:
+                for bytes_line in iter(pipe.readline, b''):
+                    bytes_line: bytes
+                    line = bytes_line.decode('utf-8', "replace")
+
+                    if debug_output is None: return
+                    debug_output.config(state="normal")
+                    debug_output.insert("end -2 chars", line + "\n")
+                    debug_output.config(state="disabled")
+
+                time.sleep(0)
+
         def worker():
             global process
-            process = subprocess.Popen(["python", "mathspace.py", str(err_disabled.get()), key])
+            global outputting
+
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+
+            process = subprocess.Popen(["python", "-u", "mathspace.py", str(err_disabled.get()), key], 
+                                       creationflags=creation_flags, stdout=subprocess.PIPE)
+
+            outputting = True
+            threading.Thread(target=read_output, args=(process.stdout,), daemon=True).start()
             process.wait()
+            outputting = False
 
             toggle_err.config(state="normal")
             start_script.config(state="normal")
@@ -42,7 +72,10 @@ def run_main_async():
 def murder():
     global process
     if process and process.poll() is None:
-        process.kill()
+        if sys.platform == "win32":
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            process.send_signal(signal.SIGINT)
 
 def settings_window():
     global get_from_env
@@ -75,6 +108,13 @@ def update_settings():
     json.dump(settings, open("settings.json", "w"), indent=4, sort_keys=True)
 
 def debug_window():
+    global debug_output
+
+    def clear():
+        debug_output.config(state="normal")
+        debug_output.delete(1.0, "end")
+        debug_output.config(state="disabled")
+
     window = Toplevel(root)
     window.title("Debug")
 
@@ -85,18 +125,25 @@ def debug_window():
     mainframe.grid(column=0, row=0, sticky=NSEW, padx=25, pady=25)
 
     mainframe.columnconfigure(1, weight=1)
-    mainframe.columnconfigure(2, weight=1)
-    mainframe.rowconfigure(2, weight=3)
-    mainframe.rowconfigure(4, weight=1)
+    mainframe.rowconfigure(2, weight=1)
 
-    ttk.Label(mainframe, text="Input").grid(column=1, row=1, sticky=W)
-    ttk.Entry(mainframe, state="readonly").grid(column=1, row=2, sticky=NSEW)
+    ttk.Label(mainframe, text="Output").grid(column=1, row=1, sticky=W)
+    ttk.Button(mainframe, text="Clear", command=clear).grid(column=2, row=1, sticky=W)
+    debug_output = Text(mainframe, state="disabled", height=0, width=0, font=("Cascadia Mono", 8))
+    debug_output.grid(column=1, row=2, columnspan=2, sticky=NSEW)
 
-    ttk.Label(mainframe, text="Output").grid(column=1, row=3, sticky=W)
-    ttk.Entry(mainframe, state="readonly").grid(column=1, row=4, sticky=NSEW)
+    window.minsize(600, 400)
 
-    ttk.Label(mainframe, text="Errors").grid(column=2, row=1, sticky=W)
-    ttk.Entry(mainframe, state="readonly").grid(column=2, row=2, rowspan=3, sticky=NSEW)
+def pin():
+    global pinned
+    if pinned:
+        root.attributes('-topmost', False)
+        menubar.entryconfigure(3, label="📌")
+    else:
+        root.attributes('-topmost', True)
+        menubar.entryconfigure(3, label="📍")
+
+    pinned = not pinned
 
 def closed():
     murder()
@@ -124,6 +171,8 @@ root["menu"] = menubar
 
 menubar.add_command(label="Settings", command=settings_window)
 menubar.add_command(label="Debug", command=debug_window)
+menubar.add_command(label="                                          ", state="disabled")
+menubar.add_command(label="📌", command=pin)
 
 mainframe = ttk.Frame(root)
 mainframe.grid(column=0, row=0, sticky=NSEW, padx=25, pady=25)

@@ -218,6 +218,8 @@ client = genai.Client(api_key=api_key)
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 browser.config.driver_options = chrome_options
+browser.config.save_screenshot_on_failure = False
+browser.config.save_page_source_on_failure = False
 
 actions = ActionChains(browser.driver)
 
@@ -270,7 +272,8 @@ while True:
                 line for line in full_question.splitlines() if not line.startswith("$B64 ")
             )
             print(clean_question)
-            answer = solve(full_question)
+            answer = solve(full_question) or ""
+            print(answer.replace(Keys.RIGHT, "[->]"))
 
             actions.scroll_to_element(browser.element(input_textbox).locate())
             actions.send_keys(Keys.BACKSPACE) # clears the text field
@@ -296,16 +299,17 @@ while True:
             )
             print(clean_question)
             answers = solve(full_question) or ""
+            print(answers)
 
             for answer in answers.split(","):
                 answer = int(answer.strip().replace(Keys.RIGHT, ""))
-                print(answer)
                 option_list[answer].element("..").click()
 
         elif browser.element(fitb_text).matching(be.present):
             full_question += parse_html(browser.element(fitb_text))
             print(full_question)
             answers = solve(full_question) or ""
+            print(answers.replace(Keys.RIGHT, "[->]"))
 
             browser.element("body").click() # resets tab navigation
 
