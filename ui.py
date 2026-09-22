@@ -1,6 +1,7 @@
 from tkinter import * # type: ignore
 from tkinter import ttk
 from tkinter import font
+from tkinter import filedialog
 
 import subprocess
 import threading
@@ -9,16 +10,20 @@ import signal
 import sys
 import os
 
-import time
-
 import json
 
-chrome_path = R'"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\selene_profile"'
+if sys.platform == "win32":
+    TEMPPROFILE = os.path.expandvars(R"%TEMP%\selene_profile")
+else:
+    TEMPPROFILE = "/tmp/selene_profile"
 
-default_settings = {
+DEBUGGING_PORT = 9222
+
+DEFAULT_SETTINGS = {
     "api_key": "",
     "err_disabled": True,
-    "get_from_env": False
+    "get_from_env": False,
+    "browser_path": R"C:\Program Files\Google\Chrome\Application\chrome.exe"
 }
 
 pinned = False
@@ -26,6 +31,10 @@ settings = {}
 debug_output = None
 
 process: subprocess.Popen | None = None
+
+def open_browser():
+    chrome_path = [browser_path.get(), f'--remote-debugging-port={DEBUGGING_PORT}', f'--user-data-dir={TEMPPROFILE}']
+    subprocess.Popen(chrome_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def run_main_async():
     global process
@@ -44,34 +53,11 @@ def run_main_async():
     else:
         file = [sys.executable, "-u", "mathspace.py"]
 
-    def read_output(pipe):
-        while outputting:
-            for bytes_line in iter(pipe.readline, b''):
-                bytes_line: bytes
-                line = bytes_line.decode('utf-8', "ignore")
-
-                if debug_output is None: return
-                debug_output.config(state="normal")
-                debug_output.insert("end -2 chars", line + "\n")
-                debug_output.config(state="disabled")
-
-            time.sleep(0)
-
     def worker():
         global process
-        global outputting
 
-        creation_flags = 0
-        if sys.platform == "win32":
-            creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
-
-        process = subprocess.Popen(file + [str(err_disabled.get()), key], 
-                                creationflags=creation_flags, stdout=subprocess.PIPE)
-
-        outputting = True
-        threading.Thread(target=read_output, args=(process.stdout,), daemon=True).start()
+        process = subprocess.Popen(file + [str(err_disabled.get()), key])
         process.wait()
-        outputting = False
 
         toggle_err.config(state="normal")
         start_script.config(state="normal")
@@ -84,13 +70,14 @@ def murder():
 
     if process is None or process.poll() is not None: return
     if sys.platform == "win32":
-        process.send_signal(signal.CTRL_BREAK_EVENT)
+        subprocess.run(f"taskkill /F /PID {process.pid} /T", shell=True) # a very dirty way to rid webdrivers
     else:
         process.send_signal(signal.SIGINT)
 
 def settings_window():
     global get_from_env
     global api_key
+    global browser_path
 
     window = Toplevel(root)
     window.title("Settings")
@@ -100,25 +87,29 @@ def settings_window():
 
     ttk.Label(mainframe, text="Settings", font="TkHeadingFont").grid(column=1, row=1, sticky=W, padx=(0, 10), pady=(0, 10))
 
-    key_entry = ttk.Checkbutton(mainframe, text="Get API Key from enviroment variables", 
-                                variable=get_from_env, onvalue=True, offvalue=False)
-    key_entry.grid(column=1, row=2, columnspan=2, sticky=W)
+    ttk.Label(mainframe, text="Get API key from\nenvironment variables").grid(column=1, row=2, sticky=W)
+    ttk.Checkbutton(mainframe, variable=get_from_env, onvalue=True, offvalue=False).grid(column=2, row=2, columnspan=2, sticky=W)
     
     ttk.Label(mainframe, text="API Key (Gemini)").grid(column=1, row=3, sticky=W)
-
     ttk.Entry(mainframe, textvariable=api_key).grid(column=2, row=3, sticky=W)
 
+    ttk.Label(mainframe, text="Browser to run").grid(column=1, row=4, sticky=W)
+    ttk.Entry(mainframe, textvariable=browser_path).grid(column=2, row=4, sticky=W)
+    browse = ttk.Button(mainframe, text="Browse...", command=lambda: browser_path.set(filedialog.askopenfilename()))
+    browse.grid(column=2, row=5, sticky=W)
 
 def update_settings():
     settings.update({
         "get_from_env": get_from_env.get(),
         "api_key": api_key.get(),
         "err_disabled": err_disabled.get(),
+        "browser_path": browser_path.get()
     })
 
     json.dump(settings, open("settings.json", "w"), indent=4, sort_keys=True)
 
 def debug_window():
+    '''maybe this will be added but not nesassary now'''
     global debug_output
 
     def clear():
@@ -171,19 +162,20 @@ font.nametofont("TkHeadingFont").config(weight="bold", size=12)
 try:
     settings = json.load(open("settings.json", "r"))
 except:
-    settings = default_settings
+    settings = DEFAULT_SETTINGS
 
 get_from_env = BooleanVar(value=settings["get_from_env"])
 api_key = StringVar(value=settings["api_key"])
 err_disabled = BooleanVar(value=settings["err_disabled"])
+browser_path = StringVar(value=settings["browser_path"])
 
 root.option_add('*tearOff', FALSE)
 menubar = Menu(root)
 root["menu"] = menubar
 
 menubar.add_command(label="Settings", command=settings_window)
-menubar.add_command(label="Debug", command=debug_window)
-menubar.add_command(label="                                          ", state="disabled")
+#menubar.add_command(label="Debug", command=debug_window)
+menubar.add_command(label="                                                           ", state="disabled")
 menubar.add_command(label="📌", command=pin)
 
 mainframe = ttk.Frame(root)
@@ -191,9 +183,7 @@ mainframe.grid(column=0, row=0, sticky=NSEW, padx=25, pady=25)
 
 ttk.Label(mainframe, text="mathspacecheater", font="TkHeadingFont").grid(column=1, row=1, sticky=W, padx=(0, 10), pady=(0, 10))
 
-open_chrome = ttk.Button(mainframe, text="Open Google Chrome", 
-                         command=lambda: subprocess.Popen(chrome_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-open_chrome.grid(column=1, row=2, sticky=W, ipadx=4)
+ttk.Button(mainframe, text="Open Browser", command=open_browser).grid(column=1, row=2, sticky=W, ipadx=4)
 
 button_frames = ttk.Frame(mainframe)
 button_frames.grid(column=1, row=3, sticky=W)

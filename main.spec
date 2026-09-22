@@ -3,7 +3,10 @@
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     Analysis = PYZ = EXE = COLLECT = lambda *args, **kwargs: lambda *args, **kwargs: None
+    DISTPATH = SPECPATH = str()
 
+import os
+import shutil
 from PyInstaller.utils.hooks import collect_submodules
 
 a_main = Analysis(
@@ -82,8 +85,15 @@ coll = COLLECT(
     mathspace_exe,
     a_mathspace.binaries,
     a_mathspace.datas,
+    [('./README.md', './README.md', 'DATA')],
     strip=False,
     upx=True,
     upx_exclude=[],
     name='main',
 )
+
+dest_dir = os.path.join(DISTPATH, 'main') 
+src_readme = os.path.join(SPECPATH, 'README.md')
+
+if os.path.exists(src_readme):
+    shutil.copy(src_readme, dest_dir)

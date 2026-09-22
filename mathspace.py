@@ -2,6 +2,7 @@
 
 import sys
 from time import sleep
+import signal
 
 from google import genai
 
@@ -220,6 +221,11 @@ chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 browser.config.driver_options = chrome_options
 browser.config.save_screenshot_on_failure = False
 browser.config.save_page_source_on_failure = False
+
+if sys.platform == "win32":
+    # Forces ChromeDriver into a completely separate process group on Windows
+    if browser.config.driver_service is not None:
+        browser.config.driver_service.creation_flags = 512
 
 actions = ActionChains(browser.driver)
 
